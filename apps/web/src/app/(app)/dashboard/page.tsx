@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { BarChart3, Clock, Loader2, LogOut, MessageCircle, Mic, Smile } from 'lucide-react';
+import { BarChart3, Brain, Clock, Loader2, LogOut, MessageCircle, Mic, Smile } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Logo } from '@/components/Logo';
@@ -87,6 +87,12 @@ export default function DashboardPage() {
             <span className="hidden text-sm text-muted-foreground sm:inline">
               {user?.displayName || user?.email}
             </span>
+            <Link
+              href="/settings"
+              className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium text-muted-foreground transition hover:bg-muted"
+            >
+              <Brain className="h-4 w-4" /> Memory
+            </Link>
             <button
               onClick={() => signOut().then(() => router.replace('/login'))}
               className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium text-muted-foreground transition hover:bg-muted"
