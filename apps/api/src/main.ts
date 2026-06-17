@@ -11,6 +11,7 @@ async function bootstrap(): Promise<void> {
 
   // Input validation is handled per-route with Zod schemas (see controllers),
   // so no global class-validator ValidationPipe is needed.
+  if (env.API_GLOBAL_PREFIX) app.setGlobalPrefix(env.API_GLOBAL_PREFIX);
   app.enableCors({ origin: env.CORS_ORIGINS, credentials: true });
 
   // Render/most PaaS inject the port to bind via $PORT; fall back to API_PORT locally.

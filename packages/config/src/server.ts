@@ -13,6 +13,9 @@ export function loadServerEnv(raw: Record<string, string | undefined> = process.
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     APP_NAME: z.string().default('HearMe'),
     API_PORT: zNum(4000),
+    // Optional path prefix for the API (e.g. "api") when web + api share one
+    // domain and the platform forwards the prefix instead of stripping it.
+    API_GLOBAL_PREFIX: z.string().optional().default(''),
     NEXT_PUBLIC_SITE_URL: z.string().url().default('http://localhost:3000'),
     NEXT_PUBLIC_API_URL: z.string().url().default('http://localhost:4000'),
 
