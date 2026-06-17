@@ -14,6 +14,7 @@ import { AnthropicService } from '../../infrastructure/anthropic/anthropic.servi
 import { ElevenLabsService } from '../../infrastructure/elevenlabs/elevenlabs.service';
 import { FirebaseService } from '../../infrastructure/firebase/firebase.service';
 import { OpenAIService } from '../../infrastructure/openai/openai.service';
+import { ReportsService } from '../reports/reports.service';
 import { buildSystemPrompt } from './prompt';
 
 export interface StartResult {
@@ -50,6 +51,7 @@ export class VoiceService {
     private readonly anthropic: AnthropicService,
     private readonly elevenlabs: ElevenLabsService,
     private readonly firebase: FirebaseService,
+    private readonly reports: ReportsService,
   ) {}
 
   /** Start a conversation: pre-flight the budget and snapshot user settings. */
@@ -159,7 +161,8 @@ export class VoiceService {
     const snap = await convRef.get();
     if (!snap.exists || snap.data()?.userId !== uid) throw new NotFoundException('conversation');
     await convRef.set({ endedAt: FieldValue.serverTimestamp() }, { merge: true });
-    // Phase 3 hooks report + memory generation here.
+    // Generate the reflection report + mood (best-effort; failure won't block ending).
+    await this.reports.generate(uid, conversationId);
     return { conversationId };
   }
 

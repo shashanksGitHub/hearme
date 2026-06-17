@@ -49,6 +49,32 @@ export class AnthropicService {
     };
   }
 
+  /** Ask Claude for a JSON object and parse it. Robust to stray prose/code fences. */
+  async json<T>(
+    system: string,
+    user: string,
+    maxTokens: number,
+  ): Promise<{ data: T; inputTokens: number; outputTokens: number }> {
+    const res = await this.client.messages.create({
+      model: this.model,
+      max_tokens: maxTokens,
+      system: `${system}\n\nRespond with ONLY a single valid JSON object. No markdown, no commentary.`,
+      messages: [{ role: 'user', content: user }],
+    });
+    const raw = res.content
+      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      .map((b) => b.text)
+      .join('');
+    const start = raw.indexOf('{');
+    const end = raw.lastIndexOf('}');
+    const json = start >= 0 && end > start ? raw.slice(start, end + 1) : raw;
+    return {
+      data: JSON.parse(json) as T,
+      inputTokens: res.usage.input_tokens,
+      outputTokens: res.usage.output_tokens,
+    };
+  }
+
   /** USD cost for an LLM turn given token counts. */
   llmCost(inputTokens: number, outputTokens: number): number {
     return (
