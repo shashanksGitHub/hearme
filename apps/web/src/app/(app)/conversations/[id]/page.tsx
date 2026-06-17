@@ -2,8 +2,8 @@
 
 import { use } from 'react';
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, Loader2, Sparkles } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Logo } from '@/components/Logo';
@@ -57,10 +57,19 @@ function Tags({ title, items }: { title: string; items: string[] }) {
 export default function ConversationDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const { data, isLoading } = useQuery<Detail>({
     queryKey: ['conversation', id, user?.uid],
     queryFn: () => apiFetch<Detail>(`/conversations/${id}`),
     enabled: !!user,
+  });
+
+  const generate = useMutation({
+    mutationFn: () => apiFetch<Detail>(`/conversations/${id}/report`, { method: 'POST' }),
+    onSuccess: (fresh) => {
+      queryClient.setQueryData(['conversation', id, user?.uid], fresh);
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
   });
 
   const r = data?.report;
@@ -141,8 +150,31 @@ export default function ConversationDetailPage({ params }: { params: Promise<{ i
                 <Tags title="Reflection suggestions" items={r.reflectionSuggestions} />
               </div>
             ) : (
-              <div className="mt-6 rounded-2xl border bg-card p-6 text-muted-foreground shadow-card">
-                No report was generated for this conversation.
+              <div className="mt-6 flex flex-col items-center gap-4 rounded-2xl border bg-card p-8 text-center shadow-card">
+                <p className="text-muted-foreground">No report was generated for this conversation yet.</p>
+                <button
+                  onClick={() => generate.mutate()}
+                  disabled={generate.isPending || !data.messages.length}
+                  className="inline-flex items-center gap-2 rounded-xl bg-brand-gradient px-6 py-3 font-semibold text-primary-foreground shadow-soft transition hover:opacity-90 disabled:opacity-60"
+                >
+                  {generate.isPending ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" /> Generating…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-5 w-5" /> Generate report now
+                    </>
+                  )}
+                </button>
+                {!data.messages.length && (
+                  <p className="text-xs text-muted-foreground">
+                    This conversation has no transcript to analyze.
+                  </p>
+                )}
+                {generate.isError && (
+                  <p className="text-sm text-warning">Couldn’t generate — please try again.</p>
+                )}
               </div>
             )}
 

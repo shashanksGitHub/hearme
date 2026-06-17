@@ -1,10 +1,23 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { FirebaseService } from '../../infrastructure/firebase/firebase.service';
+import { ReportsService } from '../reports/reports.service';
 
 /** Read APIs for conversation history + their reports. */
 @Injectable()
 export class ConversationsService {
-  constructor(private readonly firebase: FirebaseService) {}
+  constructor(
+    private readonly firebase: FirebaseService,
+    private readonly reports: ReportsService,
+  ) {}
+
+  /** On-demand (re)generation of a conversation's report, then return the detail. */
+  async regenerateReport(uid: string, id: string) {
+    const ref = this.firebase.db.collection('conversations').doc(id);
+    const snap = await ref.get();
+    if (!snap.exists || snap.data()?.userId !== uid) throw new NotFoundException('conversation');
+    await this.reports.generate(uid, id);
+    return this.get(uid, id);
+  }
 
   async list(uid: string) {
     const snap = await this.firebase.db

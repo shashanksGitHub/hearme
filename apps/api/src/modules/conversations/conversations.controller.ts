@@ -1,4 +1,4 @@
-import { Controller, Get, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { FirebaseAuthGuard } from '../../common/guards/firebase-auth.guard';
 import { ConversationsService } from './conversations.service';
@@ -16,5 +16,11 @@ export class ConversationsController {
   @Get(':id')
   get(@CurrentUser() user: { uid: string }, @Param('id') id: string) {
     return this.conversations.get(user.uid, id);
+  }
+
+  /** (Re)generate the reflection report for a conversation on demand. */
+  @Post(':id/report')
+  regenerate(@CurrentUser() user: { uid: string }, @Param('id') id: string) {
+    return this.conversations.regenerateReport(user.uid, id);
   }
 }

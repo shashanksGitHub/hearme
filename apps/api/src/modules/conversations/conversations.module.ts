@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
+import { ReportsModule } from '../reports/reports.module';
 import { ConversationsController } from './conversations.controller';
 import { ConversationsService } from './conversations.service';
 
 /** Conversations module (Phase 3): history list + detail (with report). */
 @Module({
+  imports: [ReportsModule],
   controllers: [ConversationsController],
   providers: [ConversationsService],
 })
