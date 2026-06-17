@@ -20,10 +20,19 @@ interface Dashboard {
   totalConversations: number;
   totalTalkTimeSeconds: number;
   remainingMinutes: number;
+  remainingSeconds: number;
+  dailyLimitSeconds: number;
   planId: string;
   moodScore: number;
   weeklySummary: string;
   recent: RecentConversation[];
+}
+
+/** Format seconds as M:SS (e.g. 579 → "9:39"). */
+function fmtClock(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 function fmtDuration(sec: number): string {
@@ -71,8 +80,8 @@ export default function DashboardPage() {
       Icon: Smile,
     },
     {
-      label: 'Minutes left today',
-      value: data?.remainingMinutes ?? '—',
+      label: 'Time left today',
+      value: data ? fmtClock(data.remainingSeconds) : '—',
       Icon: BarChart3,
     },
   ];

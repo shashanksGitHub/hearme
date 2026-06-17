@@ -16,6 +16,8 @@ export interface DashboardResponse {
   totalConversations: number;
   totalTalkTimeSeconds: number;
   remainingMinutes: number;
+  remainingSeconds: number;
+  dailyLimitSeconds: number;
   planId: string;
   moodScore: number;
   weeklySummary: string;
@@ -57,11 +59,9 @@ export class DashboardService {
       : 0;
 
     const usedSeconds = (usageSnap.data()?.secondsUsed as number) ?? 0;
-    // Floor so any usage is visibly reflected (e.g. 9 min left after a short chat).
-    const remainingMinutes = Math.max(
-      0,
-      Math.floor((this.env.FREE_MINUTES_PER_DAY * 60 - usedSeconds) / 60),
-    );
+    const dailyLimitSeconds = this.env.FREE_MINUTES_PER_DAY * 60;
+    const remainingSeconds = Math.max(0, dailyLimitSeconds - usedSeconds);
+    const remainingMinutes = Math.floor(remainingSeconds / 60);
 
     const recent: RecentConversation[] = convs.slice(0, 6).map((c) => ({
       id: c.id as string,
@@ -76,6 +76,8 @@ export class DashboardService {
       totalConversations: convs.length,
       totalTalkTimeSeconds,
       remainingMinutes,
+      remainingSeconds,
+      dailyLimitSeconds,
       planId: (userSnap.data()?.planId as string) ?? 'free',
       moodScore,
       weeklySummary: this.weeklySummary(convs.length, moodScore),

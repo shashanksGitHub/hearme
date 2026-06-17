@@ -239,7 +239,7 @@ export default function ConversationPage() {
         <Logo />
         <div className="flex items-center gap-4 text-sm text-muted-foreground">
           <span>⏱ {mmss(elapsed)}</span>
-          <span>{Math.ceil(remaining / 60)} min left</span>
+          <span>{mmss(remaining)} left</span>
         </div>
       </div>
 
