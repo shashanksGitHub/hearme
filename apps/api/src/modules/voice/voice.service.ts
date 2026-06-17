@@ -28,7 +28,6 @@ export interface TurnResult {
   assistantText: string;
   audioBase64: string;
   audioMimeType: string;
-  costs: ConversationCosts;
   remainingSeconds: number;
 }
 
@@ -124,7 +123,6 @@ export class VoiceService {
         assistantText: '',
         audioBase64: '',
         audioMimeType: 'audio/mpeg',
-        costs: { sttCost, llmCost: 0, ttsCost: 0, totalCost: sttCost },
         remainingSeconds: remaining,
       };
     }
@@ -178,7 +176,6 @@ export class VoiceService {
       assistantText,
       audioBase64: audioOut.toString('base64'),
       audioMimeType: 'audio/mpeg',
-      costs,
       remainingSeconds: remaining,
     };
   }

@@ -19,6 +19,7 @@ interface TurnResult {
   audioMimeType: string;
   remainingSeconds: number;
 }
+// Note: provider costs are deliberately NOT returned to the client.
 interface Line {
   role: 'user' | 'assistant';
   text: string;
