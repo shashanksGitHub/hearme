@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Loader2, Play } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import { friendlyApiError } from '@/lib/errors';
 import { Logo } from '@/components/Logo';
 
 interface LanguageMeta { code: string; label: string; nativeLabel: string }
@@ -176,6 +177,11 @@ export default function OnboardingPage() {
           </button>
         )}
       </div>
+      {complete.isError && (
+        <p className="mt-4 text-center text-sm text-warning">
+          {friendlyApiError(complete.error)}
+        </p>
+      )}
     </div>
   );
 }

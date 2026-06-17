@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Brain, Loader2, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import { friendlyApiError } from '@/lib/errors';
 import { useAuth } from '@/lib/auth';
 import { Logo } from '@/components/Logo';
 
@@ -116,6 +117,9 @@ export default function SettingsPage() {
               Clear
             </button>
           </div>
+        )}
+        {clear.isError && (
+          <p className="mt-3 text-sm text-warning">{friendlyApiError(clear.error)}</p>
         )}
       </main>
     </div>

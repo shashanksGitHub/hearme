@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, Mic, PhoneOff, Volume2 } from 'lucide-react';
 import { apiFetch, apiUpload } from '@/lib/api';
+import { friendlyApiError } from '@/lib/errors';
 import { Logo } from '@/components/Logo';
 
 interface StartResult {
@@ -70,11 +71,7 @@ export default function ConversationPage() {
       })
       .catch((e) => {
         if (!active) return;
-        setError(
-          String(e.message).includes('out_of_minutes')
-            ? "You're out of minutes for today."
-            : e.message,
-        );
+        setError(friendlyApiError(e));
         setStatus('error');
       });
     return () => {
@@ -177,9 +174,8 @@ export default function ConversationPage() {
         listenTurn();
       }
     } catch (e) {
-      const msg = String((e as Error).message);
-      if (msg.includes('out_of_minutes')) {
-        setError("You're out of minutes for today.");
+      if (String((e as Error).message).includes('out_of_minutes')) {
+        setError(friendlyApiError(e));
         teardown();
         setStatus('error');
       } else if (liveRef.current) {

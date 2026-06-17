@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth';
+import { friendlyAuthError } from '@/lib/errors';
 import { Logo } from './Logo';
 
 /** Shared email/Google auth form for /login and /signup. */
@@ -25,7 +26,7 @@ export function AuthForm({ mode }: { mode: 'login' | 'signup' }) {
       // AuthGate routes to /onboarding or /dashboard based on profile state.
       router.replace('/dashboard');
     } catch (e) {
-      setError((e as Error).message.replace('Firebase: ', ''));
+      setError(friendlyAuthError(e));
     } finally {
       setBusy(false);
     }

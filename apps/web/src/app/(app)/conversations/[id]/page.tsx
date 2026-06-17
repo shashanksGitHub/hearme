@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Loader2, Sparkles } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import { friendlyApiError } from '@/lib/errors';
 import { useAuth } from '@/lib/auth';
 import { Logo } from '@/components/Logo';
 
@@ -173,7 +174,7 @@ export default function ConversationDetailPage({ params }: { params: Promise<{ i
                   </p>
                 )}
                 {generate.isError && (
-                  <p className="text-sm text-warning">Couldn’t generate — please try again.</p>
+                  <p className="text-sm text-warning">{friendlyApiError(generate.error)}</p>
                 )}
               </div>
             )}
