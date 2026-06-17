@@ -74,9 +74,9 @@ export function loadServerEnv(raw: Record<string, string | undefined> = process.
     ELEVENLABS_TTS_COST_PER_1K_CHARS: zNum(0.3),
     ELEVENLABS_STT_COST_PER_MINUTE: zNum(0.0067),
 
-    // Stripe
-    STRIPE_SECRET_KEY: zSecret(isProd),
-    STRIPE_WEBHOOK_SECRET: zSecret(isProd),
+    // Stripe (optional until billing is enabled)
+    STRIPE_SECRET_KEY: z.string().optional().default(''),
+    STRIPE_WEBHOOK_SECRET: z.string().optional().default(''),
 
     // Firebase Admin
     FIREBASE_PROJECT_ID: zSecret(isProd),

@@ -13,8 +13,10 @@ async function bootstrap(): Promise<void> {
   // so no global class-validator ValidationPipe is needed.
   app.enableCors({ origin: env.CORS_ORIGINS, credentials: true });
 
-  await app.listen(env.API_PORT);
-  new Logger('Bootstrap').log(`${env.APP_NAME} api listening on :${env.API_PORT}`);
+  // Render/most PaaS inject the port to bind via $PORT; fall back to API_PORT locally.
+  const port = Number(process.env.PORT) || env.API_PORT;
+  await app.listen(port, '0.0.0.0');
+  new Logger('Bootstrap').log(`${env.APP_NAME} api listening on :${port}`);
 }
 
 void bootstrap();
