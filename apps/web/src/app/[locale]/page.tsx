@@ -5,6 +5,7 @@ import { BarChart3, Brain, Check, Lock, Mic } from 'lucide-react';
 import { JsonLd } from '@/components/JsonLd';
 import { Logo } from '@/components/Logo';
 import { MarketingHeader } from '@/components/MarketingHeader';
+import { MarketingFooter } from '@/components/MarketingFooter';
 import { faqJsonLd, organizationJsonLd, pageMetadata, websiteJsonLd } from '@/lib/seo';
 import type { Locale } from '@/i18n/routing';
 
@@ -128,16 +129,8 @@ export default async function LandingPage({ params }: { params: Promise<{ locale
           </div>
         </section>
 
-        {/* Footer */}
-        <footer className="border-t">
-          <div className="container flex flex-col items-center justify-between gap-4 py-10 sm:flex-row">
-            <Logo />
-            <p className="text-sm text-muted-foreground">
-              © {2026} HearMe — A safe space to talk, reflect, and feel heard.
-            </p>
-          </div>
-        </footer>
       </main>
+      <MarketingFooter />
     </>
   );
 }

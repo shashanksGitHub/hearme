@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import { env } from '@/env';
 import { locales, defaultLocale, type Locale } from '@/i18n/routing';
 
-const SITE = env.NEXT_PUBLIC_SITE_URL;
-const APP = env.NEXT_PUBLIC_APP_NAME;
+export const SITE = env.NEXT_PUBLIC_SITE_URL;
+export const APP = env.NEXT_PUBLIC_APP_NAME;
 
 /** Build hreflang alternates for a given path across all marketing locales. */
 export function alternates(path: string, locale: Locale): Metadata['alternates'] {
@@ -73,6 +73,39 @@ export function faqJsonLd(items: { q: string; a: string }[]) {
       '@type': 'Question',
       name: i.q,
       acceptedAnswer: { '@type': 'Answer', text: i.a },
+    })),
+  };
+}
+
+/** Product + offers JSON-LD for the pricing page. */
+export function productJsonLd(offers: { name: string; price: number }[]) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: `${APP} — voice-first AI companion`,
+    description: 'Talk freely with an AI companion and get reflections, summaries, and mood reports.',
+    brand: { '@type': 'Brand', name: APP },
+    offers: offers.map((o) => ({
+      '@type': 'Offer',
+      name: o.name,
+      price: o.price.toFixed(2),
+      priceCurrency: 'USD',
+      availability: 'https://schema.org/InStock',
+      url: `${SITE}/pricing`,
+    })),
+  };
+}
+
+/** Breadcrumb JSON-LD: items are [{name, path}] from home to current. */
+export function breadcrumbJsonLd(items: { name: string; path: string }[]) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: items.map((it, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: it.name,
+      item: `${SITE}${it.path === '/' ? '' : it.path}`,
     })),
   };
 }

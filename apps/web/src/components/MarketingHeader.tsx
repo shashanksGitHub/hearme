@@ -21,8 +21,8 @@ export async function MarketingHeader() {
           <Link href="/pricing" className="hover:text-foreground">
             {t('pricing')}
           </Link>
-          <Link href="/blog" className="hover:text-foreground">
-            {t('blog')}
+          <Link href="/about" className="hover:text-foreground">
+            About
           </Link>
         </nav>
         <div className="flex items-center gap-3">

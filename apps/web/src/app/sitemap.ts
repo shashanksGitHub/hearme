@@ -5,7 +5,7 @@ import { locales, defaultLocale } from '@/i18n/routing';
 const SITE = env.NEXT_PUBLIC_SITE_URL;
 
 /** Indexable marketing routes. App routes (dashboard, etc.) are intentionally excluded. */
-const ROUTES = ['', '/pricing', '/about', '/blog'];
+const ROUTES = ['', '/pricing', '/about', '/legal/privacy', '/legal/terms'];
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const entries: MetadataRoute.Sitemap = [];
