@@ -66,6 +66,8 @@ export function loadServerEnv(raw: Record<string, string | undefined> = process.
 
     // Anthropic (Claude)
     ANTHROPIC_API_KEY: z.string().optional().default(''),
+    // Admin key (sk-ant-admin…) for the org Cost/Usage report — optional.
+    ANTHROPIC_ADMIN_KEY: z.string().optional().default(''),
     ANTHROPIC_MODEL: z.string().default('claude-opus-4-8'),
     ANTHROPIC_INPUT_COST_PER_1M: zNum(5),
     ANTHROPIC_OUTPUT_COST_PER_1M: zNum(25),

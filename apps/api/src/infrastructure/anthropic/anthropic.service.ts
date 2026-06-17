@@ -8,6 +8,12 @@ export interface ChatTurn {
   content: string;
 }
 
+interface CostReport {
+  data?: { results?: { amount?: string }[] }[];
+  has_more?: boolean;
+  next_page?: string;
+}
+
 /**
  * Anthropic (Claude) wrapper for the conversation LLM. Short, empathetic voice
  * replies don't need extended thinking, so we keep latency low and omit the
@@ -73,6 +79,39 @@ export class AnthropicService {
       inputTokens: res.usage.input_tokens,
       outputTokens: res.usage.output_tokens,
     };
+  }
+
+  /**
+   * Actual month-to-date spend (USD) from Anthropic's org Cost Report API.
+   * Returns null if no admin key is configured. Amounts are returned in cents.
+   */
+  async monthToDateCostUsd(): Promise<number | null> {
+    const key = this.env.ANTHROPIC_ADMIN_KEY;
+    if (!key) return null;
+
+    const start = new Date();
+    start.setUTCDate(1);
+    start.setUTCHours(0, 0, 0, 0);
+
+    let cents = 0;
+    let page: string | undefined;
+    do {
+      const url = new URL('https://api.anthropic.com/v1/organizations/cost_report');
+      url.searchParams.set('starting_at', start.toISOString());
+      url.searchParams.set('bucket_width', '1d');
+      if (page) url.searchParams.set('page', page);
+      const res = await fetch(url, {
+        headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      });
+      if (!res.ok) throw new Error(`cost_report ${res.status}`);
+      const body = (await res.json()) as CostReport;
+      for (const bucket of body.data ?? []) {
+        for (const r of bucket.results ?? []) cents += Number(r.amount) || 0;
+      }
+      page = body.has_more ? body.next_page : undefined;
+    } while (page);
+
+    return cents / 100; // cents → dollars
   }
 
   /** USD cost for an LLM turn given token counts. */

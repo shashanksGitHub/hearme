@@ -16,6 +16,15 @@ interface AdminMetrics {
   profit: number;
   subscriptionCount: number;
   trialConversionRate: number;
+  providerSpend: {
+    anthropic: { configured: boolean; monthToDateUsd: number | null };
+    elevenlabs: {
+      tier: string;
+      charactersUsed: number;
+      characterLimit: number;
+      resetAt: string | null;
+    } | null;
+  };
 }
 
 const usd = (n: number) => `$${n.toFixed(2)}`;
@@ -81,8 +90,51 @@ export default function AdminPage() {
               ))}
             </div>
             <p className="mt-6 text-sm text-muted-foreground">
-              Revenue is $0 until billing (Stripe) is live; profit = revenue − AI cost.
+              The cards above are <strong>estimated</strong> from metered usage × configured rates.
+              Below is <strong>actual</strong> spend pulled live from each provider.
             </p>
+
+            {/* Actual provider spend (reconciled from provider APIs) */}
+            <h2 className="mt-10 text-xl font-bold">Actual provider spend</h2>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              {/* Anthropic */}
+              <div className="rounded-2xl border bg-card p-6 shadow-card">
+                <div className="text-sm text-muted-foreground">Anthropic (Claude) — month to date</div>
+                {data?.providerSpend.anthropic.configured ? (
+                  <div className="mt-2 text-2xl font-bold">
+                    {usd(data.providerSpend.anthropic.monthToDateUsd ?? 0)}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Add <code className="rounded bg-muted px-1">ANTHROPIC_ADMIN_KEY</code> (an
+                    <code className="rounded bg-muted px-1">sk-ant-admin…</code> key) to show real
+                    billed cost.
+                  </p>
+                )}
+              </div>
+
+              {/* ElevenLabs */}
+              <div className="rounded-2xl border bg-card p-6 shadow-card">
+                <div className="text-sm text-muted-foreground">
+                  ElevenLabs — characters used this period
+                </div>
+                {data?.providerSpend.elevenlabs ? (
+                  <>
+                    <div className="mt-2 text-2xl font-bold">
+                      {data.providerSpend.elevenlabs.charactersUsed.toLocaleString()} /{' '}
+                      {data.providerSpend.elevenlabs.characterLimit.toLocaleString()}
+                    </div>
+                    <div className="mt-1 text-sm text-muted-foreground">
+                      {data.providerSpend.elevenlabs.tier} plan
+                      {data.providerSpend.elevenlabs.resetAt &&
+                        ` · resets ${new Date(data.providerSpend.elevenlabs.resetAt).toLocaleDateString()}`}
+                    </div>
+                  </>
+                ) : (
+                  <p className="mt-2 text-sm text-muted-foreground">Unavailable.</p>
+                )}
+              </div>
+            </div>
           </>
         )}
       </main>

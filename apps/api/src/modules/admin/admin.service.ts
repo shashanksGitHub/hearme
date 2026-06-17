@@ -1,6 +1,20 @@
 import { Injectable } from '@nestjs/common';
 import type { AdminMetrics } from '@hearme/shared';
+import { AnthropicService } from '../../infrastructure/anthropic/anthropic.service';
+import { ElevenLabsService } from '../../infrastructure/elevenlabs/elevenlabs.service';
 import { FirebaseService } from '../../infrastructure/firebase/firebase.service';
+
+export interface ProviderSpend {
+  anthropic: { configured: boolean; monthToDateUsd: number | null };
+  elevenlabs: {
+    tier: string;
+    charactersUsed: number;
+    characterLimit: number;
+    resetAt: string | null;
+  } | null;
+}
+
+export type AdminMetricsResponse = AdminMetrics & { providerSpend: ProviderSpend };
 
 /**
  * Aggregates platform-wide metrics for the admin portal. Simple full-collection
@@ -8,13 +22,19 @@ import { FirebaseService } from '../../infrastructure/firebase/firebase.service'
  */
 @Injectable()
 export class AdminService {
-  constructor(private readonly firebase: FirebaseService) {}
+  constructor(
+    private readonly firebase: FirebaseService,
+    private readonly anthropic: AnthropicService,
+    private readonly elevenlabs: ElevenLabsService,
+  ) {}
 
-  async metrics(): Promise<AdminMetrics> {
+  async metrics(): Promise<AdminMetricsResponse> {
     const db = this.firebase.db;
-    const [usersSnap, convSnap] = await Promise.all([
+    const [usersSnap, convSnap, anthropicUsd, elevenlabs] = await Promise.all([
       db.collection('users').get(),
       db.collection('conversations').get(),
+      this.anthropic.monthToDateCostUsd().catch(() => null),
+      this.elevenlabs.subscriptionUsage().catch(() => null),
     ]);
 
     const totalUsers = usersSnap.size;
@@ -51,6 +71,13 @@ export class AdminService {
       profit: round(revenue - aiCosts),
       subscriptionCount: paidUsers,
       trialConversionRate: totalUsers ? round(paidUsers / totalUsers) : 0,
+      providerSpend: {
+        anthropic: {
+          configured: anthropicUsd !== null,
+          monthToDateUsd: anthropicUsd !== null ? round(anthropicUsd) : null,
+        },
+        elevenlabs,
+      },
     };
   }
 }

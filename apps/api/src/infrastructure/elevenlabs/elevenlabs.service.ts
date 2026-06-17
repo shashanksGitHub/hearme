@@ -85,6 +85,31 @@ export class ElevenLabsService {
   sttCost(seconds: number): number {
     return (seconds / 60) * this.env.ELEVENLABS_STT_COST_PER_MINUTE;
   }
+
+  /** Actual subscription usage this billing period (real, from ElevenLabs). */
+  async subscriptionUsage(): Promise<{
+    tier: string;
+    charactersUsed: number;
+    characterLimit: number;
+    resetAt: string | null;
+  } | null> {
+    const res = await fetch(`${BASE_URL}/user/subscription`, { headers: this.headers() });
+    if (!res.ok) return null;
+    const d = (await res.json()) as {
+      tier?: string;
+      character_count?: number;
+      character_limit?: number;
+      next_character_count_reset_unix?: number;
+    };
+    return {
+      tier: d.tier ?? 'unknown',
+      charactersUsed: d.character_count ?? 0,
+      characterLimit: d.character_limit ?? 0,
+      resetAt: d.next_character_count_reset_unix
+        ? new Date(d.next_character_count_reset_unix * 1000).toISOString()
+        : null,
+    };
+  }
 }
 
 interface ElevenLabsVoice {
