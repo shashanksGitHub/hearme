@@ -1,20 +1,11 @@
 'use client';
 
-import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import {
-  ArrowLeft,
-  Banknote,
-  Clock,
-  CpuIcon,
-  Loader2,
-  TrendingUp,
-  Users,
-  UserCheck,
-} from 'lucide-react';
+import { Banknote, Clock, CpuIcon, Loader2, TrendingUp, Users, UserCheck } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { Logo } from '@/components/Logo';
+import { AppHeader } from '@/components/AppHeader';
+import { MarketingFooter } from '@/components/MarketingFooter';
 
 interface AdminMetrics {
   totalUsers: number;
@@ -58,25 +49,10 @@ export default function AdminPage() {
     : [];
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-card/60 backdrop-blur">
-        <div className="container flex h-16 items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Logo />
-            <span className="rounded-full bg-foreground px-2 py-0.5 text-xs font-semibold text-background">
-              Admin
-            </span>
-          </div>
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" /> Dashboard
-          </Link>
-        </div>
-      </header>
+    <div className="flex min-h-screen flex-col bg-background">
+      <AppHeader />
 
-      <main className="container py-10">
+      <main className="container flex-1 py-10">
         <h1 className="text-3xl font-bold">Platform metrics</h1>
         <p className="mt-1 text-muted-foreground">Live overview across all users.</p>
 
@@ -110,6 +86,7 @@ export default function AdminPage() {
           </>
         )}
       </main>
+      <MarketingFooter />
     </div>
   );
 }

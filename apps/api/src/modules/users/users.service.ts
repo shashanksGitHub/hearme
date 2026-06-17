@@ -7,6 +7,7 @@ import { FirebaseService } from '../../infrastructure/firebase/firebase.service'
 
 export interface MeResponse extends UserProfile {
   settings: UserSettings | null;
+  isAdmin: boolean;
 }
 
 /** User profile provisioning + reads on the `users` collection. */
@@ -54,7 +55,13 @@ export class UsersService {
       trialStartedAt: this.toIso(fresh.trialStartedAt),
       createdAt: this.toIso(fresh.createdAt),
       settings: (settingsSnap.data() as UserSettings) ?? null,
+      isAdmin: this.isAdmin(fresh.email ?? authUser.email),
     };
+  }
+
+  private isAdmin(email?: string | null): boolean {
+    if (!email) return false;
+    return this.env.ADMIN_EMAILS.map((e) => e.toLowerCase()).includes(email.toLowerCase());
   }
 
   private toIso(value: unknown): string {

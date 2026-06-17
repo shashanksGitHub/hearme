@@ -1,12 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { BarChart3, Brain, Clock, Loader2, LogOut, MessageCircle, Mic, Smile } from 'lucide-react';
+import { BarChart3, Clock, Loader2, MessageCircle, Mic, Smile } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { Logo } from '@/components/Logo';
+import { AppHeader } from '@/components/AppHeader';
+import { MarketingFooter } from '@/components/MarketingFooter';
 
 interface RecentConversation {
   id: string;
@@ -59,8 +59,7 @@ function moodEmoji(score: number): string {
 }
 
 export default function DashboardPage() {
-  const { user, signOut } = useAuth();
-  const router = useRouter();
+  const { user } = useAuth();
   const { data, isLoading } = useQuery<Dashboard>({
     queryKey: ['dashboard', user?.uid],
     queryFn: () => apiFetch<Dashboard>('/dashboard'),
@@ -87,32 +86,10 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-card/60 backdrop-blur">
-        <div className="container flex h-16 items-center justify-between">
-          <Logo />
-          <div className="flex items-center gap-4">
-            <span className="hidden text-sm text-muted-foreground sm:inline">
-              {user?.displayName || user?.email}
-            </span>
-            <Link
-              href="/settings"
-              className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium text-muted-foreground transition hover:bg-muted"
-            >
-              <Brain className="h-4 w-4" /> Memory
-            </Link>
-            <button
-              onClick={() => signOut().then(() => router.replace('/login'))}
-              className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium text-muted-foreground transition hover:bg-muted"
-            >
-              <LogOut className="h-4 w-4" /> Sign out
-            </button>
-          </div>
-        </div>
-      </header>
+    <div className="flex min-h-screen flex-col bg-background">
+      <AppHeader />
 
-      <main className="container py-10">
+      <main className="container flex-1 py-10">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold">
@@ -182,6 +159,7 @@ export default function DashboardPage() {
           )}
         </section>
       </main>
+      <MarketingFooter />
     </div>
   );
 }

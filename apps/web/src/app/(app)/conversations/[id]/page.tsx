@@ -1,13 +1,13 @@
 'use client';
 
 import { use } from 'react';
-import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Loader2, Sparkles } from 'lucide-react';
+import { Loader2, Sparkles } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { friendlyApiError } from '@/lib/errors';
 import { useAuth } from '@/lib/auth';
-import { Logo } from '@/components/Logo';
+import { AppHeader } from '@/components/AppHeader';
+import { MarketingFooter } from '@/components/MarketingFooter';
 
 interface Report {
   summary: string;
@@ -76,20 +76,10 @@ export default function ConversationDetailPage({ params }: { params: Promise<{ i
   const r = data?.report;
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-card/60 backdrop-blur">
-        <div className="container flex h-16 items-center justify-between">
-          <Logo />
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" /> Dashboard
-          </Link>
-        </div>
-      </header>
+    <div className="flex min-h-screen flex-col bg-background">
+      <AppHeader />
 
-      <main className="container max-w-3xl py-10">
+      <main className="container max-w-3xl flex-1 py-10">
         {isLoading ? (
           <Loader2 className="mx-auto h-6 w-6 animate-spin text-primary" />
         ) : !data ? (
@@ -200,6 +190,7 @@ export default function ConversationDetailPage({ params }: { params: Promise<{ i
           </>
         )}
       </main>
+      <MarketingFooter />
     </div>
   );
 }

@@ -1,12 +1,12 @@
 'use client';
 
-import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Brain, Loader2, Trash2 } from 'lucide-react';
+import { Brain, Loader2, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { friendlyApiError } from '@/lib/errors';
 import { useAuth } from '@/lib/auth';
-import { Logo } from '@/components/Logo';
+import { AppHeader } from '@/components/AppHeader';
+import { MarketingFooter } from '@/components/MarketingFooter';
 
 interface Memory {
   goals: string[];
@@ -42,20 +42,10 @@ export default function SettingsPage() {
     CATEGORIES.every((c) => !(data[c.key] as string[])?.length);
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-card/60 backdrop-blur">
-        <div className="container flex h-16 items-center justify-between">
-          <Logo />
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" /> Dashboard
-          </Link>
-        </div>
-      </header>
+    <div className="flex min-h-screen flex-col bg-background">
+      <AppHeader />
 
-      <main className="container max-w-2xl py-10">
+      <main className="container max-w-2xl flex-1 py-10">
         <div className="flex items-center gap-3">
           <span className="grid h-11 w-11 place-items-center rounded-xl bg-accent/15 text-primary">
             <Brain className="h-6 w-6" />
@@ -122,6 +112,7 @@ export default function SettingsPage() {
           <p className="mt-3 text-sm text-warning">{friendlyApiError(clear.error)}</p>
         )}
       </main>
+      <MarketingFooter />
     </div>
   );
 }
