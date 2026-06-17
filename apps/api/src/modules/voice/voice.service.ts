@@ -58,7 +58,8 @@ export class VoiceService {
 
   /** Start a conversation: pre-flight the budget and snapshot user settings. */
   async startConversation(uid: string): Promise<StartResult> {
-    const remainingSeconds = await this.remainingSeconds(uid);
+    const budget = this.env.FREE_MINUTES_PER_DAY * 60;
+    const remainingSeconds = Math.max(0, budget - (await this.usedSecondsToday(uid)));
     if (remainingSeconds <= 0) throw new ForbiddenException('out_of_minutes');
 
     const settings = await this.getSettings(uid);
@@ -77,7 +78,7 @@ export class VoiceService {
     return { conversationId: ref.id, remainingSeconds };
   }
 
-  /** Process one spoken turn end-to-end. */
+  /** Process one spoken turn end-to-end. Logs per-stage timings for latency RCA. */
   async processTurn(
     uid: string,
     conversationId: string,
@@ -85,49 +86,65 @@ export class VoiceService {
     mimeType: string,
     durationMs: number,
   ): Promise<TurnResult> {
+    const t0 = Date.now();
     const convRef = this.firebase.db.collection('conversations').doc(conversationId);
-    const convSnap = await convRef.get();
+    // Parallelize the conversation read with today's-usage read (independent).
+    const [convSnap, usedToday] = await Promise.all([convRef.get(), this.usedSecondsToday(uid)]);
     const conv = convSnap.data();
     if (!convSnap.exists || conv?.userId !== uid) throw new NotFoundException('conversation');
     if (!conv?.voiceId) throw new ForbiddenException('no_voice_selected');
 
-    const remainingBefore = await this.remainingSeconds(uid);
-    if (remainingBefore <= 0) throw new ForbiddenException('out_of_minutes');
+    // Budget is metered by WALL-CLOCK conversation time, not just user-speech.
+    const budget = this.env.FREE_MINUTES_PER_DAY * 60;
+    const startedMs = this.tsToMs(conv.startedAt) || t0;
+    const sessionElapsed = Math.max(0, Math.round((t0 - startedMs) / 1000));
+    const remaining = Math.max(0, budget - usedToday - sessionElapsed);
+    if (remaining <= 0) throw new ForbiddenException('out_of_minutes');
 
     const turnSeconds = Math.max(1, Math.round(durationMs / 1000));
 
-    // 1) Speech-to-text (provider configurable: openai | elevenlabs)
-    const { text: userText, cost: sttCost } = await this.transcribe(audio, mimeType, turnSeconds);
+    // 1) Speech-to-text — run in parallel with the history + memory reads
+    //    (they don't depend on the new transcript) to overlap their latency.
+    const sttStart = Date.now();
+    const [stt, history, memory] = await Promise.all([
+      this.transcribe(audio, mimeType, turnSeconds),
+      this.loadHistory(convRef),
+      this.loadMemory(uid),
+    ]);
+    const sttMs = Date.now() - sttStart;
+    const { text: userText, cost: sttCost } = stt;
 
     if (!userText) {
-      // Nothing heard — don't bill LLM/TTS; just report back.
-      await this.addUsage(uid, convRef, turnSeconds, { sttCost, llmCost: 0, ttsCost: 0, totalCost: sttCost });
+      this.logger.log(
+        `turn ${conversationId} stt=${sttMs}ms (no speech detected) total=${Date.now() - t0}ms`,
+      );
+      void this.recordTurn(uid, convRef, { sttCost, llmCost: 0, ttsCost: 0, totalCost: sttCost }, sessionElapsed);
       return {
         userText: '',
         assistantText: '',
         audioBase64: '',
         audioMimeType: 'audio/mpeg',
         costs: { sttCost, llmCost: 0, ttsCost: 0, totalCost: sttCost },
-        remainingSeconds: Math.max(0, remainingBefore - turnSeconds),
+        remainingSeconds: remaining,
       };
     }
 
     // 2) Build prompt with history + memory + style + language
-    const [history, memory] = await Promise.all([
-      this.loadHistory(convRef),
-      this.loadMemory(uid),
-    ]);
     const systemPrompt = buildSystemPrompt({
       languageCode: conv.language,
       styleId: conv.conversationStyle ?? null,
       memory,
     });
 
-    // 3) LLM (provider configurable: anthropic | openai)
+    // 3) LLM
+    const llmStart = Date.now();
     const { text: assistantText, cost: llmCost } = await this.chat(systemPrompt, history, userText);
+    const llmMs = Date.now() - llmStart;
 
     // 4) TTS
+    const ttsStart = Date.now();
     const audioOut = await this.elevenlabs.tts(conv.voiceId, assistantText);
+    const ttsMs = Date.now() - ttsStart;
     const ttsCost = this.elevenlabs.ttsCost(assistantText);
 
     const costs: ConversationCosts = {
@@ -137,15 +154,24 @@ export class VoiceService {
       totalCost: sttCost + llmCost + ttsCost,
     };
 
-    // 5) Persist messages + costs + usage
+    // Persist in the background so the spoken reply returns immediately
+    // (the next turn won't read history until after this audio finishes playing).
     const messages = convRef.collection('messages');
-    await messages.add({ role: 'user', content: userText, timestamp: FieldValue.serverTimestamp() });
-    await messages.add({
-      role: 'assistant',
-      content: assistantText,
-      timestamp: FieldValue.serverTimestamp(),
-    });
-    await this.addUsage(uid, convRef, turnSeconds, costs);
+    void Promise.all([
+      messages.add({ role: 'user', content: userText, timestamp: FieldValue.serverTimestamp() }),
+      messages.add({
+        role: 'assistant',
+        content: assistantText,
+        timestamp: FieldValue.serverTimestamp(),
+      }),
+      this.recordTurn(uid, convRef, costs, sessionElapsed),
+    ]).catch((e) => this.logger.warn(`persist turn failed: ${(e as Error).message}`));
+
+    const total = Date.now() - t0;
+    this.logger.log(
+      `turn ${conversationId} [stt:${this.env.STT_PROVIDER} llm:${this.env.LLM_PROVIDER}/${this.anthropic.model}] ` +
+        `stt=${sttMs}ms llm=${llmMs}ms tts=${ttsMs}ms total=${total}ms (reply ${assistantText.length} chars)`,
+    );
 
     return {
       userText,
@@ -153,17 +179,42 @@ export class VoiceService {
       audioBase64: audioOut.toString('base64'),
       audioMimeType: 'audio/mpeg',
       costs,
-      remainingSeconds: Math.max(0, remainingBefore - turnSeconds),
+      remainingSeconds: remaining,
     };
   }
 
-  /** Finalize a conversation. Returns the conversationId for follow-up (reports). */
+  /** Finalize a conversation: commit wall-clock time to usage, run report + memory.
+   *  Empty conversations (no exchange) are deleted so they don't pollute stats. */
   async endConversation(uid: string, conversationId: string): Promise<{ conversationId: string }> {
     const convRef = this.firebase.db.collection('conversations').doc(conversationId);
     const snap = await convRef.get();
-    if (!snap.exists || snap.data()?.userId !== uid) throw new NotFoundException('conversation');
-    await convRef.set({ endedAt: FieldValue.serverTimestamp() }, { merge: true });
-    // Generate the report + update long-term memory (best-effort, in parallel).
+    const conv = snap.data();
+    if (!snap.exists || conv?.userId !== uid) throw new NotFoundException('conversation');
+
+    const firstMsg = await convRef.collection('messages').limit(1).get();
+    if (firstMsg.empty) {
+      await convRef.delete();
+      this.logger.log(`conversation ${conversationId} ended with no exchange — deleted`);
+      return { conversationId };
+    }
+
+    const startedMs = this.tsToMs(conv.startedAt) || Date.now();
+    const finalDuration = Math.max(1, Math.round((Date.now() - startedMs) / 1000));
+    await convRef.set(
+      { endedAt: FieldValue.serverTimestamp(), durationSeconds: finalDuration },
+      { merge: true },
+    );
+    // Commit the conversation's wall-clock time to today's usage (once).
+    await this.firebase.db
+      .collection('usage')
+      .doc(uid)
+      .collection('daily')
+      .doc(this.today())
+      .set(
+        { userId: uid, date: this.today(), secondsUsed: FieldValue.increment(finalDuration) },
+        { merge: true },
+      );
+
     await Promise.all([
       this.reports.generate(uid, conversationId),
       this.memory.update(uid, conversationId),
@@ -257,29 +308,33 @@ export class VoiceService {
     return new Date().toISOString().slice(0, 10);
   }
 
-  /** Seconds left today under the configurable free-minute budget. */
-  private async remainingSeconds(uid: string): Promise<number> {
-    const budget = this.env.FREE_MINUTES_PER_DAY * 60;
+  private tsToMs(ts: unknown): number {
+    return ts && typeof (ts as { toDate?: () => Date }).toDate === 'function'
+      ? (ts as { toDate: () => Date }).toDate().getTime()
+      : 0;
+  }
+
+  /** Seconds already consumed today (committed wall-clock across ended conversations). */
+  private async usedSecondsToday(uid: string): Promise<number> {
     const snap = await this.firebase.db
       .collection('usage')
       .doc(uid)
       .collection('daily')
       .doc(this.today())
       .get();
-    const used = (snap.data()?.secondsUsed as number) ?? 0;
-    return Math.max(0, budget - used);
+    return (snap.data()?.secondsUsed as number) ?? 0;
   }
 
-  /** Atomically record metered time + costs on the conversation and daily usage. */
-  private async addUsage(
+  /** Per-turn: set wall-clock duration so far + accumulate AI costs (time committed on end). */
+  private async recordTurn(
     uid: string,
     convRef: FirebaseFirestore.DocumentReference,
-    seconds: number,
     costs: ConversationCosts,
+    sessionElapsed: number,
   ): Promise<void> {
     await convRef.set(
       {
-        durationSeconds: FieldValue.increment(seconds),
+        durationSeconds: sessionElapsed,
         costs: {
           sttCost: FieldValue.increment(costs.sttCost),
           llmCost: FieldValue.increment(costs.llmCost),
@@ -295,12 +350,7 @@ export class VoiceService {
       .collection('daily')
       .doc(this.today())
       .set(
-        {
-          userId: uid,
-          date: this.today(),
-          secondsUsed: FieldValue.increment(seconds),
-          totalCost: FieldValue.increment(costs.totalCost),
-        },
+        { userId: uid, date: this.today(), totalCost: FieldValue.increment(costs.totalCost) },
         { merge: true },
       );
   }

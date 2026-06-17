@@ -5,6 +5,7 @@ import { getMessages, setRequestLocale } from 'next-intl/server';
 import { LANGUAGES } from '@hearme/shared';
 import { routing } from '@/i18n/routing';
 import { poppins } from '@/lib/fonts';
+import { Analytics } from '@/lib/analytics';
 import '../globals.css';
 
 export function generateStaticParams() {
@@ -31,6 +32,7 @@ export default async function LocaleLayout({
         <NextIntlClientProvider locale={locale} messages={messages}>
           {children}
         </NextIntlClientProvider>
+        <Analytics />
       </body>
     </html>
   );

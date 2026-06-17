@@ -92,6 +92,9 @@ export function loadServerEnv(raw: Record<string, string | undefined> = process.
     FIRESTORE_EMULATOR_HOST: z.string().optional().default(''),
     FIREBASE_STORAGE_EMULATOR_HOST: z.string().optional().default(''),
 
+    // Admin access (comma-separated emails allowed into the admin portal)
+    ADMIN_EMAILS: zStrList([]),
+
     // Monitoring
     SENTRY_DSN: z.string().optional().default(''),
 

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth';
 import { friendlyAuthError } from '@/lib/errors';
+import { track } from '@/lib/analytics';
 import { Logo } from './Logo';
 
 /** Shared email/Google auth form for /login and /signup. */
@@ -23,6 +24,7 @@ export function AuthForm({ mode }: { mode: 'login' | 'signup' }) {
     setError(null);
     try {
       await fn();
+      track(isSignup ? 'signed_up' : 'signed_in');
       // AuthGate routes to /onboarding or /dashboard based on profile state.
       router.replace('/dashboard');
     } catch (e) {

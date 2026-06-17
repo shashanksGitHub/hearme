@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Loader2, Mic, PhoneOff, Volume2 } from 'lucide-react';
 import { apiFetch, apiUpload } from '@/lib/api';
 import { friendlyApiError } from '@/lib/errors';
+import { track } from '@/lib/analytics';
 import { Logo } from '@/components/Logo';
 
 interface StartResult {
@@ -59,25 +60,11 @@ export default function ConversationPage() {
   const playerRef = useRef<HTMLAudioElement | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
 
-  // Start the conversation (budget pre-flight) on mount.
+  // Ready immediately — the conversation doc is created lazily on "Start" so
+  // simply visiting the page (or React's double-mount) never spawns empty ones.
   useEffect(() => {
-    let active = true;
-    apiFetch<StartResult>('/voice/conversations', { method: 'POST' })
-      .then((r) => {
-        if (!active) return;
-        conversationIdRef.current = r.conversationId;
-        setRemaining(r.remainingSeconds);
-        setStatus('ready');
-      })
-      .catch((e) => {
-        if (!active) return;
-        setError(friendlyApiError(e));
-        setStatus('error');
-      });
-    return () => {
-      active = false;
-      teardown();
-    };
+    setStatus('ready');
+    return () => teardown();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -186,7 +173,14 @@ export default function ConversationPage() {
 
   async function startConversation() {
     if (status !== 'ready') return;
+    setStatus('connecting');
     try {
+      // Create the conversation only now (lazy) — and only once.
+      if (!conversationIdRef.current) {
+        const r = await apiFetch<StartResult>('/voice/conversations', { method: 'POST' });
+        conversationIdRef.current = r.conversationId;
+        setRemaining(r.remainingSeconds);
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
@@ -200,9 +194,15 @@ export default function ConversationPage() {
       analyserRef.current = analyser;
       liveRef.current = true;
       setLive(true);
+      track('conversation_started');
       listenTurn();
-    } catch {
-      setError('Microphone access is needed to talk. Please allow it and try again.');
+    } catch (e) {
+      const msg = String((e as Error)?.message ?? '');
+      setError(
+        msg.includes('API')
+          ? friendlyApiError(e)
+          : 'Microphone access is needed to talk. Please allow it and try again.',
+      );
       setStatus('error');
     }
   }
@@ -211,6 +211,7 @@ export default function ConversationPage() {
     teardown();
     setLive(false);
     setStatus('ready');
+    track('conversation_ended', { turns: lines.filter((l) => l.role === 'user').length });
     try {
       if (conversationIdRef.current)
         await apiFetch(`/voice/conversations/${conversationIdRef.current}/end`, { method: 'POST' });

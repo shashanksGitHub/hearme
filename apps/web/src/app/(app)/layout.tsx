@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { AuthGate } from '@/components/AuthGate';
 import { Providers } from '@/lib/providers';
 import { poppins } from '@/lib/fonts';
+import { Analytics } from '@/lib/analytics';
 import '../globals.css';
 
 /**
@@ -19,6 +20,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <body className="min-h-screen font-sans antialiased">
         <Providers>
           <AuthGate>{children}</AuthGate>
+          <Analytics />
         </Providers>
       </body>
     </html>

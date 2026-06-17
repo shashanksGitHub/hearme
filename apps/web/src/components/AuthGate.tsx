@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api';
+import { identify } from '@/lib/analytics';
 import { Logo } from './Logo';
 
 interface Me {
@@ -31,6 +32,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       router.replace('/login');
       return;
     }
+    identify(user.uid, { email: user.email ?? undefined });
     if (me && !me.onboardingComplete && pathname !== '/onboarding') {
       router.replace('/onboarding');
     }

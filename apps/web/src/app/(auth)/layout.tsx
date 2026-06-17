@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { Providers } from '@/lib/providers';
 import { poppins } from '@/lib/fonts';
+import { Analytics } from '@/lib/analytics';
 import '../globals.css';
 
 export const metadata: Metadata = {
@@ -13,6 +14,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
     <html lang="en" className={poppins.variable} suppressHydrationWarning>
       <body className="min-h-screen bg-hero font-sans antialiased">
         <Providers>{children}</Providers>
+        <Analytics />
       </body>
     </html>
   );

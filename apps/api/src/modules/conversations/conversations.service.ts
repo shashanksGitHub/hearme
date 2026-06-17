@@ -26,7 +26,9 @@ export class ConversationsService {
       .orderBy('startedAt', 'desc')
       .limit(50)
       .get();
-    return snap.docs.map((d) => {
+    return snap.docs
+      .filter((d) => (Number(d.data().durationSeconds) || 0) > 0)
+      .map((d) => {
       const c = d.data();
       return {
         id: d.id,

@@ -43,7 +43,10 @@ export class DashboardService {
         .get(),
     ]);
 
-    const convs = convSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Record<string, unknown>);
+    // Only count real conversations (an exchange happened → duration > 0).
+    const convs = convSnap.docs
+      .map((d) => ({ id: d.id, ...d.data() }) as Record<string, unknown>)
+      .filter((c) => (Number(c.durationSeconds) || 0) > 0);
     const totalTalkTimeSeconds = convs.reduce((s, c) => s + (Number(c.durationSeconds) || 0), 0);
 
     const moodScores = convs
@@ -54,9 +57,10 @@ export class DashboardService {
       : 0;
 
     const usedSeconds = (usageSnap.data()?.secondsUsed as number) ?? 0;
+    // Floor so any usage is visibly reflected (e.g. 9 min left after a short chat).
     const remainingMinutes = Math.max(
       0,
-      Math.round((this.env.FREE_MINUTES_PER_DAY * 60 - usedSeconds) / 60),
+      Math.floor((this.env.FREE_MINUTES_PER_DAY * 60 - usedSeconds) / 60),
     );
 
     const recent: RecentConversation[] = convs.slice(0, 6).map((c) => ({
