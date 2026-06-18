@@ -78,7 +78,7 @@ export function faqJsonLd(items: { q: string; a: string }[]) {
 }
 
 /** Product + offers JSON-LD for the pricing page. */
-export function productJsonLd(offers: { name: string; price: number }[]) {
+export function productJsonLd(offers: { name: string; price: number }[], currency = 'USD') {
   return {
     '@context': 'https://schema.org',
     '@type': 'Product',
@@ -88,8 +88,8 @@ export function productJsonLd(offers: { name: string; price: number }[]) {
     offers: offers.map((o) => ({
       '@type': 'Offer',
       name: o.name,
-      price: o.price.toFixed(2),
-      priceCurrency: 'USD',
+      price: String(o.price),
+      priceCurrency: currency,
       availability: 'https://schema.org/InStock',
       url: `${SITE}/pricing`,
     })),

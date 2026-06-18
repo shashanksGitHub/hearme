@@ -1,10 +1,4 @@
-import {
-  ForbiddenException,
-  Inject,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { FieldValue } from 'firebase-admin/firestore';
 import { toFile } from 'openai';
 import type { ServerEnv } from '@hearme/config';
@@ -38,8 +32,9 @@ interface ChatMsg {
 
 /**
  * Voice orchestration (turn-based). Each turn: STT → prompt(memory+style+lang)
- * → OpenAI chat → ElevenLabs TTS, with per-component cost metering and full
- * persistence to Firestore. Enforces the configurable daily free-minute budget.
+ * → LLM chat → TTS, with per-component cost metering and full persistence to
+ * Firestore. STT/LLM/TTS providers are all env-swappable (see *_PROVIDER).
+ * Enforces the configurable daily free-minute budget.
  */
 @Injectable()
 export class VoiceService {
@@ -91,7 +86,9 @@ export class VoiceService {
     const [convSnap, usedToday] = await Promise.all([convRef.get(), this.usedSecondsToday(uid)]);
     const conv = convSnap.data();
     if (!convSnap.exists || conv?.userId !== uid) throw new NotFoundException('conversation');
-    if (!conv?.voiceId) throw new ForbiddenException('no_voice_selected');
+    // ElevenLabs needs a specific voiceId; OpenAI TTS uses a single configured voice.
+    if (this.env.TTS_PROVIDER === 'elevenlabs' && !conv?.voiceId)
+      throw new ForbiddenException('no_voice_selected');
 
     // Budget is metered by WALL-CLOCK conversation time, not just user-speech.
     const budget = this.env.FREE_MINUTES_PER_DAY * 60;
@@ -117,7 +114,12 @@ export class VoiceService {
       this.logger.log(
         `turn ${conversationId} stt=${sttMs}ms (no speech detected) total=${Date.now() - t0}ms`,
       );
-      void this.recordTurn(uid, convRef, { sttCost, llmCost: 0, ttsCost: 0, totalCost: sttCost }, sessionElapsed);
+      void this.recordTurn(
+        uid,
+        convRef,
+        { sttCost, llmCost: 0, ttsCost: 0, totalCost: sttCost },
+        sessionElapsed,
+      );
       return {
         userText: '',
         assistantText: '',
@@ -141,9 +143,8 @@ export class VoiceService {
 
     // 4) TTS
     const ttsStart = Date.now();
-    const audioOut = await this.elevenlabs.tts(conv.voiceId, assistantText);
+    const { audio: audioOut, cost: ttsCost } = await this.synthesize(conv.voiceId, assistantText);
     const ttsMs = Date.now() - ttsStart;
-    const ttsCost = this.elevenlabs.ttsCost(assistantText);
 
     const costs: ConversationCosts = {
       sttCost,
@@ -167,7 +168,7 @@ export class VoiceService {
 
     const total = Date.now() - t0;
     this.logger.log(
-      `turn ${conversationId} [stt:${this.env.STT_PROVIDER} llm:${this.env.LLM_PROVIDER}/${this.anthropic.model}] ` +
+      `turn ${conversationId} [stt:${this.env.STT_PROVIDER} llm:${this.env.LLM_PROVIDER}/${this.anthropic.model} tts:${this.env.TTS_PROVIDER}] ` +
         `stt=${sttMs}ms llm=${llmMs}ms tts=${ttsMs}ms total=${total}ms (reply ${assistantText.length} chars)`,
     );
 
@@ -247,7 +248,11 @@ export class VoiceService {
   ): Promise<{ text: string; cost: number }> {
     const maxTokens = 220;
     if (this.env.LLM_PROVIDER === 'anthropic') {
-      const r = await this.anthropic.chat(systemPrompt, [...history, { role: 'user', content: userText }], maxTokens);
+      const r = await this.anthropic.chat(
+        systemPrompt,
+        [...history, { role: 'user', content: userText }],
+        maxTokens,
+      );
       return { text: r.text, cost: this.anthropic.llmCost(r.inputTokens, r.outputTokens) };
     }
     const completion = await this.openai.client.chat.completions.create({
@@ -269,6 +274,19 @@ export class VoiceService {
     };
   }
 
+  /** Synthesize the reply via the configured TTS provider; returns MP3 audio + USD cost. */
+  private async synthesize(
+    voiceId: string | null,
+    text: string,
+  ): Promise<{ audio: Buffer; cost: number }> {
+    if (this.env.TTS_PROVIDER === 'elevenlabs') {
+      const audio = await this.elevenlabs.tts(voiceId as string, text);
+      return { audio, cost: this.elevenlabs.ttsCost(text) };
+    }
+    const audio = await this.openai.tts(text);
+    return { audio, cost: this.openai.ttsCost(text) };
+  }
+
   // ── helpers ──
 
   private async getSettings(uid: string): Promise<{
@@ -285,10 +303,12 @@ export class VoiceService {
     return (snap.data() as Record<string, string>) ?? {};
   }
 
-  private async loadHistory(
-    convRef: FirebaseFirestore.DocumentReference,
-  ): Promise<ChatMsg[]> {
-    const snap = await convRef.collection('messages').orderBy('timestamp', 'asc').limitToLast(20).get();
+  private async loadHistory(convRef: FirebaseFirestore.DocumentReference): Promise<ChatMsg[]> {
+    const snap = await convRef
+      .collection('messages')
+      .orderBy('timestamp', 'asc')
+      .limitToLast(20)
+      .get();
     return snap.docs.map((d) => {
       const m = d.data();
       return { role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content as string };

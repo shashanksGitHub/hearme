@@ -6,38 +6,52 @@ import { JsonLd } from '@/components/JsonLd';
 import { MarketingHeader } from '@/components/MarketingHeader';
 import { MarketingFooter } from '@/components/MarketingFooter';
 import { breadcrumbJsonLd, faqJsonLd, pageMetadata, productJsonLd } from '@/lib/seo';
+import { currencyForLocale, formatPrice } from '@/lib/pricing';
 import type { Locale } from '@/i18n/routing';
 
-// Canonical marketing prices — mirror the backend plan env (BASIC_PLAN_*, PRO_PLAN_*).
-const PLANS = [
-  {
-    name: 'Free',
-    price: 0,
-    cadence: 'forever',
-    blurb: 'Try HearMe and build the habit.',
-    features: ['10 minutes every day', '6-day full trial', 'Conversation reports', 'Mood insights'],
-    cta: 'Start free',
-    highlight: false,
-  },
-  {
-    name: 'Basic',
-    price: 9.99,
-    cadence: '/month',
-    blurb: 'For regular reflection.',
-    features: ['300 minutes / month', 'Everything in Free', 'Long-term memory', 'Priority voices'],
-    cta: 'Choose Basic',
-    highlight: true,
-  },
-  {
-    name: 'Pro',
-    price: 19.99,
-    cadence: '/month',
-    blurb: 'Unlimited space to talk.',
-    features: ['Unlimited (fair use)', 'Everything in Basic', 'Deeper reports', 'Early features'],
-    cta: 'Choose Pro',
-    highlight: false,
-  },
-];
+interface Plan {
+  name: string;
+  price: number;
+  cadence: string;
+  blurb: string;
+  features: string[];
+  cta: string;
+  highlight: boolean;
+}
+
+// Plans priced in the locale's currency (see lib/pricing.ts).
+function plansFor(locale: Locale): Plan[] {
+  const c = currencyForLocale(locale);
+  return [
+    {
+      name: 'Free',
+      price: 0,
+      cadence: 'forever',
+      blurb: 'Try HearMe and build the habit.',
+      features: ['10 minutes every day', '6-day full trial', 'Conversation reports', 'Mood insights'],
+      cta: 'Start free',
+      highlight: false,
+    },
+    {
+      name: 'Basic',
+      price: c.basic,
+      cadence: '/month',
+      blurb: 'For regular reflection.',
+      features: ['300 minutes / month', 'Everything in Free', 'Long-term memory', 'Priority voices'],
+      cta: 'Choose Basic',
+      highlight: true,
+    },
+    {
+      name: 'Pro',
+      price: c.pro,
+      cadence: '/month',
+      blurb: 'Unlimited space to talk.',
+      features: ['Unlimited (fair use)', 'Everything in Basic', 'Deeper reports', 'Early features'],
+      cta: 'Choose Pro',
+      highlight: false,
+    },
+  ];
+}
 
 const FAQS = [
   {
@@ -73,9 +87,17 @@ export default async function PricingPage({ params }: { params: Promise<{ locale
   const { locale } = await params;
   setRequestLocale(locale);
 
+  const cur = currencyForLocale(locale);
+  const PLANS = plansFor(locale);
+
   return (
     <>
-      <JsonLd data={productJsonLd(PLANS.map((p) => ({ name: p.name, price: p.price })))} />
+      <JsonLd
+        data={productJsonLd(
+          PLANS.map((p) => ({ name: p.name, price: p.price })),
+          cur.code,
+        )}
+      />
       <JsonLd data={faqJsonLd(FAQS)} />
       <JsonLd
         data={breadcrumbJsonLd([
@@ -114,7 +136,7 @@ export default async function PricingPage({ params }: { params: Promise<{ locale
                 <h2 className="text-xl font-bold">{p.name}</h2>
                 <p className="mt-1 text-sm text-muted-foreground">{p.blurb}</p>
                 <div className="mt-5 flex items-baseline gap-1">
-                  <span className="text-4xl font-bold">${p.price.toFixed(p.price % 1 ? 2 : 0)}</span>
+                  <span className="text-4xl font-bold">{formatPrice(p.price, cur)}</span>
                   <span className="text-muted-foreground">{p.cadence}</span>
                 </div>
                 <ul className="mt-6 flex-1 space-y-3 text-sm">

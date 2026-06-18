@@ -23,6 +23,22 @@ export class OpenAIService {
     return this.env.OPENAI_STT_MODEL;
   }
 
+  /** Synthesize `text` and return the full MP3 audio buffer (cheap default voice). */
+  async tts(text: string): Promise<Buffer> {
+    const res = await this.client.audio.speech.create({
+      model: this.env.OPENAI_TTS_MODEL,
+      voice: this.env.OPENAI_TTS_VOICE as OpenAI.Audio.SpeechCreateParams['voice'],
+      input: text,
+      response_format: 'mp3',
+    });
+    return Buffer.from(await res.arrayBuffer());
+  }
+
+  /** USD cost for synthesizing `text`. */
+  ttsCost(text: string): number {
+    return (text.length / 1000) * this.env.OPENAI_TTS_COST_PER_1K_CHARS;
+  }
+
   /** USD cost for an LLM turn given input/output token counts. */
   llmCost(inputTokens: number, outputTokens: number): number {
     const inCost = (inputTokens / 1_000_000) * this.env.OPENAI_LLM_INPUT_COST_PER_1M;
