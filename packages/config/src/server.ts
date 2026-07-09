@@ -57,7 +57,7 @@ export function loadServerEnv(raw: Record<string, string | undefined> = process.
     // to use premium ElevenLabs voices.
     STT_PROVIDER: z.enum(['openai', 'elevenlabs']).default('openai'),
     LLM_PROVIDER: z.enum(['openai', 'anthropic']).default('openai'),
-    TTS_PROVIDER: z.enum(['openai', 'elevenlabs']).default('openai'),
+    TTS_PROVIDER: z.enum(['openai', 'elevenlabs', 'google']).default('openai'),
 
     // OpenAI
     OPENAI_API_KEY: z.string().optional().default(''),
@@ -85,6 +85,15 @@ export function loadServerEnv(raw: Record<string, string | undefined> = process.
     ELEVENLABS_STT_MODEL: z.string().default('scribe_v1'),
     ELEVENLABS_TTS_COST_PER_1K_CHARS: zNum(0.3),
     ELEVENLABS_STT_COST_PER_MINUTE: zNum(0.0067),
+
+    // Google Cloud Text-to-Speech (cheap GA alternative to ElevenLabs; returns MP3).
+    // ~1M free chars/month. Leave GOOGLE_TTS_VOICE empty to auto-pick a voice per
+    // language by gender; Neural2 voices cost ~$16/1M, Standard ~$4/1M chars.
+    GOOGLE_TTS_API_KEY: z.string().optional().default(''),
+    GOOGLE_TTS_VOICE: z.string().optional().default(''),
+    GOOGLE_TTS_GENDER: z.enum(['MALE', 'FEMALE', 'NEUTRAL']).default('FEMALE'),
+    GOOGLE_TTS_LANGUAGE_CODE: z.string().default('en-US'),
+    GOOGLE_TTS_COST_PER_1M_CHARS: zNum(4),
 
     // Stripe (optional until billing is enabled)
     STRIPE_SECRET_KEY: z.string().optional().default(''),

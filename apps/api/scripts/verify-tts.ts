@@ -49,6 +49,28 @@ async function main() {
     console.log('   Set OPENAI_API_KEY to exercise the new default path.');
   }
 
+  // Cheap GA path: Google Cloud TTS (returns MP3 directly — drop-in).
+  if (env.GOOGLE_TTS_API_KEY) {
+    console.log('\n— live Google Cloud TTS call —');
+    const voice = env.GOOGLE_TTS_VOICE
+      ? { languageCode: 'en-US', name: env.GOOGLE_TTS_VOICE }
+      : { languageCode: 'en-US', ssmlGender: env.GOOGLE_TTS_GENDER };
+    const res = await fetch(
+      `https://texttospeech.googleapis.com/v1/text:synthesize?key=${env.GOOGLE_TTS_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: { text }, voice, audioConfig: { audioEncoding: 'MP3' } }),
+      },
+    );
+    const data = (await res.json()) as { audioContent?: string };
+    const buf = data.audioContent ? Buffer.from(data.audioContent, 'base64') : Buffer.alloc(0);
+    writeFileSync('/tmp/hearme-tts-google.mp3', buf);
+    console.log(`status: ${res.status} | bytes: ${buf.length} | looks like MP3: ${isMp3(buf)} | /tmp/hearme-tts-google.mp3`);
+  } else {
+    console.log('\n⚠️  GOOGLE_TTS_API_KEY is empty — skipping the Google (cheap) live call.');
+  }
+
   // Existing premium path: ElevenLabs (regression check that the swap didn't break it).
   if (env.ELEVENLABS_API_KEY) {
     console.log('\n— live ElevenLabs TTS call (premium path, regression check) —');

@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Header,
+  Param,
+  Post,
+  Query,
+  StreamableFile,
+  UseGuards,
+} from '@nestjs/common';
 import { z } from 'zod';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { FirebaseAuthGuard } from '../../common/guards/firebase-auth.guard';
@@ -30,12 +40,21 @@ export class OnboardingController {
     return this.onboarding.listVoices();
   }
 
+  /** Public: on-the-fly voice preview clip for a persona (Google TTS). */
+  @Get('voices/:id/preview')
+  @Header('Content-Type', 'audio/mpeg')
+  @Header('Cache-Control', 'public, max-age=86400')
+  async voicePreview(
+    @Param('id') id: string,
+    @Query('lang') lang?: string,
+  ): Promise<StreamableFile> {
+    const audio = await this.onboarding.voicePreview(id, lang ?? 'en');
+    return new StreamableFile(audio);
+  }
+
   @UseGuards(FirebaseAuthGuard)
   @Post('complete')
-  complete(
-    @CurrentUser() user: { uid: string },
-    @Body() body: unknown,
-  ) {
+  complete(@CurrentUser() user: { uid: string }, @Body() body: unknown) {
     const input = CompleteSchema.parse(body);
     return this.onboarding.complete(user.uid, input);
   }

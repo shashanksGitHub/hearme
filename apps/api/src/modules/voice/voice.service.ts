@@ -6,6 +6,7 @@ import type { ConversationCosts, Memory } from '@hearme/shared';
 import { ENV } from '../../common/config/config.module';
 import { AnthropicService } from '../../infrastructure/anthropic/anthropic.service';
 import { ElevenLabsService } from '../../infrastructure/elevenlabs/elevenlabs.service';
+import { GoogleTtsService } from '../../infrastructure/google/google-tts.service';
 import { FirebaseService } from '../../infrastructure/firebase/firebase.service';
 import { OpenAIService } from '../../infrastructure/openai/openai.service';
 import { MemoryService } from '../memory/memory.service';
@@ -45,6 +46,7 @@ export class VoiceService {
     private readonly openai: OpenAIService,
     private readonly anthropic: AnthropicService,
     private readonly elevenlabs: ElevenLabsService,
+    private readonly google: GoogleTtsService,
     private readonly firebase: FirebaseService,
     private readonly reports: ReportsService,
     private readonly memory: MemoryService,
@@ -143,7 +145,11 @@ export class VoiceService {
 
     // 4) TTS
     const ttsStart = Date.now();
-    const { audio: audioOut, cost: ttsCost } = await this.synthesize(conv.voiceId, assistantText);
+    const { audio: audioOut, cost: ttsCost } = await this.synthesize(
+      conv.voiceId,
+      assistantText,
+      conv.language,
+    );
     const ttsMs = Date.now() - ttsStart;
 
     const costs: ConversationCosts = {
@@ -278,10 +284,15 @@ export class VoiceService {
   private async synthesize(
     voiceId: string | null,
     text: string,
+    language?: string | null,
   ): Promise<{ audio: Buffer; cost: number }> {
     if (this.env.TTS_PROVIDER === 'elevenlabs') {
       const audio = await this.elevenlabs.tts(voiceId as string, text);
       return { audio, cost: this.elevenlabs.ttsCost(text) };
+    }
+    if (this.env.TTS_PROVIDER === 'google') {
+      const audio = await this.google.tts(text, language, voiceId);
+      return { audio, cost: this.google.ttsCost(text) };
     }
     const audio = await this.openai.tts(text);
     return { audio, cost: this.openai.ttsCost(text) };

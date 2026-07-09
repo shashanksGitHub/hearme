@@ -1,13 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { ServerEnv } from '@hearme/config';
-import {
-  CONVERSATION_STYLES,
-  LANGUAGES,
-  type LanguageMeta,
-  type Plan,
-} from '@hearme/shared';
+import { CONVERSATION_STYLES, LANGUAGES, type LanguageMeta, type Plan } from '@hearme/shared';
 import { ENV } from '../../common/config/config.module';
 import { ElevenLabsService } from '../../infrastructure/elevenlabs/elevenlabs.service';
+import { GoogleTtsService } from '../../infrastructure/google/google-tts.service';
 import { FirebaseService } from '../../infrastructure/firebase/firebase.service';
 
 /** Builds onboarding options from env config and persists the user's choices. */
@@ -16,6 +12,7 @@ export class OnboardingService {
   constructor(
     @Inject(ENV) private readonly env: ServerEnv,
     private readonly elevenlabs: ElevenLabsService,
+    private readonly google: GoogleTtsService,
     private readonly firebase: FirebaseService,
   ) {}
 
@@ -38,7 +35,10 @@ export class OnboardingService {
         name: 'Free',
         price: 0,
         minutes: this.env.FREE_MINUTES_PER_DAY,
-        features: [`${this.env.FREE_MINUTES_PER_DAY} min/day`, `${this.env.FREE_TRIAL_DAYS}-day trial`],
+        features: [
+          `${this.env.FREE_MINUTES_PER_DAY} min/day`,
+          `${this.env.FREE_TRIAL_DAYS}-day trial`,
+        ],
         stripePriceId: null,
       },
     ];
@@ -79,8 +79,26 @@ export class OnboardingService {
     };
   }
 
+  /** Voice choices for the picker — provider-aware (Google personas or ElevenLabs voices). */
   listVoices() {
+    if (this.env.TTS_PROVIDER === 'google') {
+      const prefix = this.env.API_GLOBAL_PREFIX ? `/${this.env.API_GLOBAL_PREFIX}` : '';
+      const base = `${this.env.NEXT_PUBLIC_API_URL}${prefix}`;
+      return this.google.personas().map((p) => ({
+        id: p.id,
+        name: p.name,
+        accent: p.description,
+        gender: p.gender,
+        previewUrl: `${base}/onboarding/voices/${p.id}/preview`,
+        labels: { description: p.description },
+      }));
+    }
     return this.elevenlabs.listVoices();
+  }
+
+  /** Synthesize a short preview clip for a persona in a language (Google TTS). */
+  voicePreview(personaId: string, language: string): Promise<Buffer> {
+    return this.google.previewAudio(personaId, language);
   }
 
   /** Persist onboarding selections and mark the profile complete. */

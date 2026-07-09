@@ -27,6 +27,8 @@ Per-package: `pnpm --filter @hearme/api test`, `pnpm --filter @hearme/web typech
 
 Running a single API test: `pnpm --filter @hearme/api exec jest <pattern>` (Jest + ts-jest). The web app has no tests yet (`test` is a no-op). The `@hearme/shared` and `@hearme/config` packages have no lint configured (their `lint` scripts are stubs).
 
+**`pnpm lint` currently fails repo-wide** — ESLint 9 is installed but there is no flat `eslint.config.*`, so it errors before linting anything. Treat `pnpm typecheck` (strict `tsc --noEmit`) as the real correctness gate until a flat config is added.
+
 **Build order matters:** `@hearme/shared` and `@hearme/config` compile to `dist/` and are consumed as `workspace:*` deps. Turbo's `^build` dependsOn handles this, but if you see stale types in web/api, rebuild the changed package (`pnpm --filter @hearme/shared build`). `dev` tasks also depend on `^build`, so the shared packages must build before the apps start.
 
 ## Architecture
@@ -45,7 +47,9 @@ Monorepo: two apps over two shared packages.
 
 Each turn is push-to-talk over **HTTP multipart**, orchestrated in `apps/api/src/modules/voice/voice.service.ts`:
 
-`mic → POST /voice/conversations/:id/turn (audio blob) → STT → load history+memory, buildSystemPrompt → LLM chat → ElevenLabs TTS → base64 audio back`
+`mic → POST /voice/conversations/:id/turn (audio blob) → STT → load history+memory, buildSystemPrompt → LLM chat → TTS (provider-swappable) → base64 audio back`
+
+The stages are fully **serial with no streaming** and every provider round-trip is on the critical path, so per-turn latency ≈ STT + LLM + TTS added together (typically several seconds each). This is the main reason turns feel slow; real speed-ups mean overlapping/streaming the stages, not swapping vendors.
 
 Endpoints: `POST /voice/conversations` (start, pre-flights daily free-minute budget), `POST /voice/conversations/:id/turn`, `POST /voice/conversations/:id/end`. The web client uses `apiUpload`/`apiFetch` in `src/lib/api.ts`.
 
@@ -53,7 +57,9 @@ Endpoints: `POST /voice/conversations` (start, pre-flights daily free-minute bud
 
 ### Provider swappability + cost metering
 
-STT and LLM providers are swappable via env (`STT_PROVIDER` = openai|elevenlabs, `LLM_PROVIDER` = openai|anthropic) with no code changes — both implementations live behind the infrastructure services. Every turn records per-component cost (`sttCost`/`llmCost`/`ttsCost`/`totalCost`) on the conversation, which drives admin profitability/dashboard views. When touching the voice path, keep cost metering intact and add the unit-cost env knobs (e.g. `*_COST_PER_*` in `config/server.ts`) for any new provider.
+STT, LLM, **and TTS** are all swappable via env with no code changes (`STT_PROVIDER` = openai|elevenlabs, `LLM_PROVIDER` = openai|anthropic, `TTS_PROVIDER` = openai|elevenlabs|google) — each implementation lives behind an `src/infrastructure/*` service, and `voice.service.ts` branches on the env value (`transcribe`/`chat`/`synthesize`). Every turn records per-component cost (`sttCost`/`llmCost`/`ttsCost`/`totalCost`) on the conversation, which drives admin profitability/dashboard views. When touching the voice path, keep cost metering intact and add the unit-cost env knobs (e.g. `*_COST_PER_*` in `config/server.ts`) for any new provider.
+
+TTS default is **Google Cloud TTS** (~20–75× cheaper than ElevenLabs, returns MP3 directly); ElevenLabs is the premium option; OpenAI is the fallback. Because Google voices are language-locked (unlike ElevenLabs' one multilingual voice), voice selection is modeled as cross-language **personas** in `infrastructure/google/google-tts.service.ts` — the stored `voiceId` is a persona id that resolves to the right per-language voice at synth time. Onboarding's `listVoices()` is provider-aware, and `GET /onboarding/voices/:id/preview` (public) synthesizes on-the-fly previews since Google has no preview URLs.
 
 ### Auth
 
@@ -62,15 +68,18 @@ STT and LLM providers are swappable via env (`STT_PROVIDER` = openai|elevenlabs,
 
 ### Config / env conventions
 
-- Env is validated **once at boot** through the shared Zod schema (`ConfigModule` provides the typed `ServerEnv` under the `ENV` token; inject with `@Inject(ENV)`). `apps/api/src/load-env.ts` MUST be the first import in `main.ts` because `app.module.ts` reads env at import time. It walks up to find the monorepo-root `.env`.
-- The root `.env` is the single env file for the whole monorepo. `next.config.mjs` and `turbo.json` both load it; Next inlines `NEXT_PUBLIC_*` at build time (referenced statically via `apps/web/src/env.ts`).
-- Feature flags, pricing/plan numbers, free-tier minutes, supported languages, and retention are all env-driven (see `packages/config/src/server.ts`). Prefer adding a flag/number there over hardcoding.
+- Env is validated **once at boot** through the shared Zod schema (`ConfigModule` provides the typed `ServerEnv` under the `ENV` token; inject with `@Inject(ENV)`). `apps/api/src/load-env.ts` MUST be the first import in `main.ts` because `app.module.ts` reads env at import time.
+- **⚠️ `.env` files shadow each other — the root is NOT the only one.** `load-env.ts` walks *up* from `apps/api/src` and loads the **nearest** `.env`; if `apps/api/.env` exists it wins and **the root `.env` is never read by the API**. The repo currently has three: root `.env`, `apps/api/.env` (what the API actually reads), and `apps/web/.env` (what Next reads). So editing only the root `.env` silently has no effect on the API — change `apps/api/.env` for API config, and keep the files in sync. (This also means local and prod can drift, e.g. `ANTHROPIC_MODEL` differing between `apps/api/.env` and the deployed spec.) Env is read once at boot, so **restart the dev server after editing any `.env`**.
+- Feature flags, pricing/plan numbers, free-tier minutes, supported languages, and retention are all env-driven (see `packages/config/src/server.ts`) — prefer adding a flag/number there over hardcoding. Next inlines `NEXT_PUBLIC_*` at build time (referenced statically via `apps/web/src/env.ts`).
 
 ## Deployment
 
-- **Web → Netlify** (`netlify.toml`): `base = apps/web`, `@netlify/plugin-nextjs` runtime, Node 22. Build command is `pnpm run build` — never run the dev server in CI (it never exits).
-- **API → Render** (`apps/api/render.yaml`, `apps/api/Dockerfile`). `docker-compose.yml` is for local API-against-emulators parity only.
-- Firebase rules/indexes live in `firebase/` (`firestore.rules`, `firestore.indexes.json`, `storage.rules`); `.firebaserc` default project is `hearme-companion`, but the local emulator project is `hearme-local`.
+Production runs on **DigitalOcean App Platform** — a single app named `hear-me` (region `blr`) with **two services built from this same repo** (`shashanksGitHub/hearme`, branch `main`): `web` (Next.js, `pnpm start:web`) and `api` (NestJS, `pnpm start:api`), both on port 8080. Ingress routes `/api/*` → the `api` service and `/*` → `web`, so the browser reaches the API at `<domain>/api` (that `/api` prefix is why `NEXT_PUBLIC_API_URL` ends in `/api`). **`deploy_on_push: true` on `main`** — every push to `main` builds and redeploys both services.
+
+- **Env vars live in the DO app spec, not in `.env` files** (the `.env` files are local/dev only). Manage with `doctl` (`doctl apps list`, `doctl apps spec get <app-id>`, `doctl apps update <app-id> --spec <file>`); secrets are stored encrypted as `EV[...]` and preserved on re-apply. Updating the spec triggers a redeploy.
+- **Ordering when flipping an env-driven provider** (e.g. `TTS_PROVIDER`): push the code first, *then* change the env — otherwise the still-deployed old code may reject a new enum value at boot and crash.
+- Older docs reference Netlify (`netlify.toml`) / Render (`render.yaml`, `Dockerfile`); those files no longer exist — ignore them.
+- Firebase rules/indexes live in `firebase/` (`firestore.rules`, `firestore.indexes.json`, `storage.rules`); `.firebaserc` default project is `hearme-companion`, local emulator project is `hearme-local`.
 
 ## Conventions
 
