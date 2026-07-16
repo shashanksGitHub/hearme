@@ -53,6 +53,8 @@ The stages are fully **serial with no streaming** and every provider round-trip 
 
 Endpoints: `POST /voice/conversations` (start, pre-flights daily free-minute budget), `POST /voice/conversations/:id/turn`, `POST /voice/conversations/:id/end`. The web client uses `apiUpload`/`apiFetch` in `src/lib/api.ts`.
 
+**Budget metering is TALK TIME, committed per turn.** Each turn's recording length (client `durationMs`, clamped 1–300 s server-side) is incremented onto `usage/{uid}/daily/{date}.secondsUsed` *before* the turn response returns, so abandoned sessions still count and idle/AI-speaking time never burns minutes. `conversations.durationSeconds` is the same accumulated talk time (not wall-clock). `/end` is idempotent (no-op if `endedAt` set), commits nothing, and fires report + memory generation in the background so it returns instantly. The daily key `{date}` is YYYY-MM-DD in `USAGE_TIMEZONE` (env, default UTC) — `VoiceService.today()` and `DashboardService.today()` must stay in sync. The web conversation header ticks "talk time left" down only while status is `listening` and re-syncs from each turn's `remainingSeconds`.
+
 `packages/shared/src/ws-protocol.ts` defines a WebSocket streaming protocol, and the README describes the pipeline as "streaming." **That WS path is not wired up** — there is no `WebSocketGateway` in the API and no WS client in web. Treat the current implementation as the turn-based HTTP one; the WS protocol is aspirational/future.
 
 ### Provider swappability + cost metering

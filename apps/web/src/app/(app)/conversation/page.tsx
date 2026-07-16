@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { Loader2, Mic, PhoneOff, Volume2 } from 'lucide-react';
 import { apiFetch, apiUpload } from '@/lib/api';
 import { friendlyApiError } from '@/lib/errors';
@@ -42,6 +43,7 @@ function pickMime(): string {
 
 export default function ConversationPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [status, setStatus] = useState<Status>('connecting');
   const [live, setLive] = useState(false);
   const [remaining, setRemaining] = useState(0);
@@ -52,6 +54,7 @@ export default function ConversationPage() {
   // Refs (read inside async callbacks where state would be stale).
   const conversationIdRef = useRef<string | null>(null);
   const liveRef = useRef(false);
+  const statusRef = useRef<Status>('connecting');
   const streamRef = useRef<MediaStream | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -70,7 +73,18 @@ export default function ConversationPage() {
   }, []);
 
   useEffect(() => {
-    const id = setInterval(() => liveRef.current && setElapsed((e) => e + 1), 1000);
+    statusRef.current = status;
+  }, [status]);
+
+  // Session timer ticks whenever live; "left" ticks down only while the mic is
+  // recording (listening) — that's what the server meters as talk time. The
+  // server value returned with each turn re-syncs any drift.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (!liveRef.current) return;
+      setElapsed((e) => e + 1);
+      if (statusRef.current === 'listening') setRemaining((r) => Math.max(0, r - 1));
+    }, 1000);
     return () => clearInterval(id);
   }, []);
 
@@ -219,6 +233,8 @@ export default function ConversationPage() {
     } catch {
       /* ignore */
     }
+    // The session changed talk time + conversation list — refetch the dashboard.
+    void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     router.replace('/dashboard');
   }
 
@@ -240,7 +256,7 @@ export default function ConversationPage() {
         <Logo />
         <div className="flex items-center gap-4 text-sm text-muted-foreground">
           <span>⏱ {mmss(elapsed)}</span>
-          <span>{mmss(remaining)} left</span>
+          <span>{mmss(remaining)} talk time left</span>
         </div>
       </div>
 

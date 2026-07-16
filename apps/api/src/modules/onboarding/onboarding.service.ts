@@ -35,10 +35,7 @@ export class OnboardingService {
         name: 'Free',
         price: 0,
         minutes: this.env.FREE_MINUTES_PER_DAY,
-        features: [
-          `${this.env.FREE_MINUTES_PER_DAY} min/day`,
-          `${this.env.FREE_TRIAL_DAYS}-day trial`,
-        ],
+        features: [`${this.env.FREE_MINUTES_PER_DAY} min of talk time/day`, 'No card required'],
         stripePriceId: null,
       },
     ];

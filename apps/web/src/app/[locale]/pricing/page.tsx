@@ -28,7 +28,12 @@ function plansFor(locale: Locale): Plan[] {
       price: 0,
       cadence: 'forever',
       blurb: 'Try HearMe and build the habit.',
-      features: ['10 minutes every day', '6-day full trial', 'Conversation reports', 'Mood insights'],
+      features: [
+        '30 minutes of talk time every day',
+        'Conversation reports',
+        'Mood insights',
+        'No card required',
+      ],
       cta: 'Start free',
       highlight: false,
     },
@@ -60,7 +65,7 @@ const FAQS = [
   },
   {
     q: 'Is there a free option?',
-    a: 'Yes — the Free plan gives you 10 minutes every day, plus a 6-day full trial, with no card required.',
+    a: 'Yes — the Free plan gives you 30 minutes of talk time every day, with no card required.',
   },
   {
     q: 'Is HearMe a replacement for therapy?',
@@ -77,7 +82,7 @@ export async function generateMetadata({
   return pageMetadata({
     title: 'Pricing — HearMe',
     description:
-      'Simple, transparent pricing for HearMe. Start free with 10 minutes a day, or go unlimited. Cancel anytime.',
+      'Simple, transparent pricing for HearMe. Start free with 30 minutes a day, or go unlimited. Cancel anytime.',
     path: '/pricing',
     locale,
   });

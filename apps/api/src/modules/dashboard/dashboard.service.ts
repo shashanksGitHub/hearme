@@ -37,12 +37,7 @@ export class DashboardService {
     const [convSnap, userSnap, usageSnap] = await Promise.all([
       db.collection('conversations').where('userId', '==', uid).orderBy('startedAt', 'desc').get(),
       db.collection('users').doc(uid).get(),
-      db
-        .collection('usage')
-        .doc(uid)
-        .collection('daily')
-        .doc(new Date().toISOString().slice(0, 10))
-        .get(),
+      db.collection('usage').doc(uid).collection('daily').doc(this.today()).get(),
     ]);
 
     // Only count real conversations (an exchange happened → duration > 0).
@@ -83,6 +78,14 @@ export class DashboardService {
       weeklySummary: this.weeklySummary(convs.length, moodScore),
       recent,
     };
+  }
+
+  /** Today's date key (YYYY-MM-DD) in the configured usage timezone — must
+   *  match VoiceService.today() so "time left" reads the same ledger doc. */
+  private today(): string {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: this.env.USAGE_TIMEZONE }).format(
+      new Date(),
+    );
   }
 
   private weeklySummary(count: number, mood: number): string {

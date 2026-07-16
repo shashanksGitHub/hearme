@@ -37,7 +37,7 @@ export default async function LandingPage({ params }: { params: Promise<{ locale
     { q: tfaq('q1.q'), a: tfaq('q1.a') },
     { q: tfaq('q2.q'), a: tfaq('q2.a') },
   ];
-  const badges = ['10 min/day free for 6 days', 'No credit card required', 'Private & Secure'];
+  const badges = ['30 free minutes every day', 'No credit card required', 'Private & Secure'];
 
   return (
     <>

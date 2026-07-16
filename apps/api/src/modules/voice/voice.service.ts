@@ -35,7 +35,11 @@ interface ChatMsg {
  * Voice orchestration (turn-based). Each turn: STT → prompt(memory+style+lang)
  * → LLM chat → TTS, with per-component cost metering and full persistence to
  * Firestore. STT/LLM/TTS providers are all env-swappable (see *_PROVIDER).
- * Enforces the configurable daily free-minute budget.
+ *
+ * Budget: the configurable daily free-minute budget is metered by TALK TIME —
+ * each spoken turn's recording length is committed to the daily usage ledger
+ * as soon as the turn is processed (not on /end), so abandoned sessions still
+ * count and idle/AI-speaking time never burns minutes.
  */
 @Injectable()
 export class VoiceService {
@@ -92,14 +96,15 @@ export class VoiceService {
     if (this.env.TTS_PROVIDER === 'elevenlabs' && !conv?.voiceId)
       throw new ForbiddenException('no_voice_selected');
 
-    // Budget is metered by WALL-CLOCK conversation time, not just user-speech.
+    // Budget is metered by TALK TIME: prior turns are already committed to the
+    // daily ledger (per-turn), so the committed total is the whole picture.
     const budget = this.env.FREE_MINUTES_PER_DAY * 60;
-    const startedMs = this.tsToMs(conv.startedAt) || t0;
-    const sessionElapsed = Math.max(0, Math.round((t0 - startedMs) / 1000));
-    const remaining = Math.max(0, budget - usedToday - sessionElapsed);
+    const remaining = Math.max(0, budget - usedToday);
     if (remaining <= 0) throw new ForbiddenException('out_of_minutes');
 
-    const turnSeconds = Math.max(1, Math.round(durationMs / 1000));
+    // Client-reported recording length, clamped to sane bounds (the VAD loop
+    // produces short turns; 300s caps a spoofed/buggy value).
+    const turnSeconds = Math.min(300, Math.max(1, Math.round(durationMs / 1000)));
 
     // 1) Speech-to-text — run in parallel with the history + memory reads
     //    (they don't depend on the new transcript) to overlap their latency.
@@ -116,12 +121,8 @@ export class VoiceService {
       this.logger.log(
         `turn ${conversationId} stt=${sttMs}ms (no speech detected) total=${Date.now() - t0}ms`,
       );
-      void this.recordTurn(
-        uid,
-        convRef,
-        { sttCost, llmCost: 0, ttsCost: 0, totalCost: sttCost },
-        sessionElapsed,
-      );
+      // No speech → no talk time metered; still record the STT cost.
+      void this.recordTurn(uid, convRef, { sttCost, llmCost: 0, ttsCost: 0, totalCost: sttCost }, 0);
       return {
         userText: '',
         assistantText: '',
@@ -159,7 +160,11 @@ export class VoiceService {
       totalCost: sttCost + llmCost + ttsCost,
     };
 
-    // Persist in the background so the spoken reply returns immediately
+    // Commit this turn's talk time to the daily ledger BEFORE responding, so
+    // the budget check of the next turn (and any parallel session) sees it.
+    await this.commitTalkTime(uid, turnSeconds);
+
+    // Persist the rest in the background so the spoken reply returns immediately
     // (the next turn won't read history until after this audio finishes playing).
     const messages = convRef.collection('messages');
     void Promise.all([
@@ -169,7 +174,7 @@ export class VoiceService {
         content: assistantText,
         timestamp: FieldValue.serverTimestamp(),
       }),
-      this.recordTurn(uid, convRef, costs, sessionElapsed),
+      this.recordTurn(uid, convRef, costs, turnSeconds),
     ]).catch((e) => this.logger.warn(`persist turn failed: ${(e as Error).message}`));
 
     const total = Date.now() - t0;
@@ -183,17 +188,21 @@ export class VoiceService {
       assistantText,
       audioBase64: audioOut.toString('base64'),
       audioMimeType: 'audio/mpeg',
-      remainingSeconds: remaining,
+      remainingSeconds: Math.max(0, remaining - turnSeconds),
     };
   }
 
-  /** Finalize a conversation: commit wall-clock time to usage, run report + memory.
-   *  Empty conversations (no exchange) are deleted so they don't pollute stats. */
+  /** Finalize a conversation. Talk time is already committed per turn, so this
+   *  only stamps endedAt and kicks off report + memory generation in the
+   *  background (the response returns immediately). Idempotent: re-ending an
+   *  already-ended conversation is a no-op. Empty conversations (no exchange)
+   *  are deleted so they don't pollute stats. */
   async endConversation(uid: string, conversationId: string): Promise<{ conversationId: string }> {
     const convRef = this.firebase.db.collection('conversations').doc(conversationId);
     const snap = await convRef.get();
     const conv = snap.data();
     if (!snap.exists || conv?.userId !== uid) throw new NotFoundException('conversation');
+    if (conv.endedAt) return { conversationId };
 
     const firstMsg = await convRef.collection('messages').limit(1).get();
     if (firstMsg.empty) {
@@ -202,27 +211,14 @@ export class VoiceService {
       return { conversationId };
     }
 
-    const startedMs = this.tsToMs(conv.startedAt) || Date.now();
-    const finalDuration = Math.max(1, Math.round((Date.now() - startedMs) / 1000));
-    await convRef.set(
-      { endedAt: FieldValue.serverTimestamp(), durationSeconds: finalDuration },
-      { merge: true },
-    );
-    // Commit the conversation's wall-clock time to today's usage (once).
-    await this.firebase.db
-      .collection('usage')
-      .doc(uid)
-      .collection('daily')
-      .doc(this.today())
-      .set(
-        { userId: uid, date: this.today(), secondsUsed: FieldValue.increment(finalDuration) },
-        { merge: true },
-      );
+    await convRef.set({ endedAt: FieldValue.serverTimestamp() }, { merge: true });
 
-    await Promise.all([
+    void Promise.all([
       this.reports.generate(uid, conversationId),
       this.memory.update(uid, conversationId),
-    ]);
+    ]).catch((e) =>
+      this.logger.warn(`post-conversation report/memory failed: ${(e as Error).message}`),
+    );
     return { conversationId };
   }
 
@@ -332,37 +328,44 @@ export class VoiceService {
     return snap.exists ? (snap.data() as Memory) : null;
   }
 
+  /** Today's date key (YYYY-MM-DD) in the configured usage timezone, so the
+   *  daily budget resets at local midnight rather than UTC midnight. */
   private today(): string {
-    return new Date().toISOString().slice(0, 10);
+    return new Intl.DateTimeFormat('en-CA', { timeZone: this.env.USAGE_TIMEZONE }).format(
+      new Date(),
+    );
   }
 
-  private tsToMs(ts: unknown): number {
-    return ts && typeof (ts as { toDate?: () => Date }).toDate === 'function'
-      ? (ts as { toDate: () => Date }).toDate().getTime()
-      : 0;
+  private usageRef(uid: string): FirebaseFirestore.DocumentReference {
+    return this.firebase.db.collection('usage').doc(uid).collection('daily').doc(this.today());
   }
 
-  /** Seconds already consumed today (committed wall-clock across ended conversations). */
+  /** Seconds of talk time already committed today (per-turn commits). */
   private async usedSecondsToday(uid: string): Promise<number> {
-    const snap = await this.firebase.db
-      .collection('usage')
-      .doc(uid)
-      .collection('daily')
-      .doc(this.today())
-      .get();
+    const snap = await this.usageRef(uid).get();
     return (snap.data()?.secondsUsed as number) ?? 0;
   }
 
-  /** Per-turn: set wall-clock duration so far + accumulate AI costs (time committed on end). */
+  /** Commit a turn's talk time to today's ledger. Awaited on the turn's
+   *  critical path so subsequent budget checks always see it. */
+  private async commitTalkTime(uid: string, seconds: number): Promise<void> {
+    await this.usageRef(uid).set(
+      { userId: uid, date: this.today(), secondsUsed: FieldValue.increment(seconds) },
+      { merge: true },
+    );
+  }
+
+  /** Per-turn (background): accumulate talk time + AI costs on the conversation
+   *  doc and mirror the cost onto today's ledger. */
   private async recordTurn(
     uid: string,
     convRef: FirebaseFirestore.DocumentReference,
     costs: ConversationCosts,
-    sessionElapsed: number,
+    talkSeconds: number,
   ): Promise<void> {
     await convRef.set(
       {
-        durationSeconds: sessionElapsed,
+        durationSeconds: FieldValue.increment(talkSeconds),
         costs: {
           sttCost: FieldValue.increment(costs.sttCost),
           llmCost: FieldValue.increment(costs.llmCost),
@@ -372,15 +375,10 @@ export class VoiceService {
       },
       { merge: true },
     );
-    await this.firebase.db
-      .collection('usage')
-      .doc(uid)
-      .collection('daily')
-      .doc(this.today())
-      .set(
-        { userId: uid, date: this.today(), totalCost: FieldValue.increment(costs.totalCost) },
-        { merge: true },
-      );
+    await this.usageRef(uid).set(
+      { userId: uid, date: this.today(), totalCost: FieldValue.increment(costs.totalCost) },
+      { merge: true },
+    );
   }
 
   private ext(mimeType: string): string {

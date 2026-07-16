@@ -116,9 +116,11 @@ export type Plan = z.infer<typeof PlanSchema>;
 
 export const UsageSchema = z.object({
   userId: z.string(),
-  date: z.string(), // YYYY-MM-DD
-  minutesUsed: z.number(),
-  costs: ConversationCostsSchema,
+  date: z.string(), // YYYY-MM-DD (in the configured USAGE_TIMEZONE)
+  /** Talk-time seconds committed per turn (drives the daily free-minute budget). */
+  secondsUsed: z.number(),
+  /** Total AI provider cost for the day (USD). */
+  totalCost: z.number(),
 });
 export type Usage = z.infer<typeof UsageSchema>;
 

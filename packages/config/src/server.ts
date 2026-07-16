@@ -52,6 +52,24 @@ export function loadServerEnv(raw: Record<string, string | undefined> = process.
     // Retention
     AUDIO_RETENTION_DAYS: zNum(30),
 
+    // IANA timezone that defines when the daily free-minute budget resets
+    // (e.g. "Asia/Kolkata"). Defaults to UTC.
+    USAGE_TIMEZONE: z
+      .string()
+      .optional()
+      .default('UTC')
+      .refine(
+        (tz) => {
+          try {
+            new Intl.DateTimeFormat('en-CA', { timeZone: tz });
+            return true;
+          } catch {
+            return false;
+          }
+        },
+        { message: 'not a valid IANA timezone' },
+      ),
+
     // AI providers (swap STT/LLM/TTS without code changes). TTS defaults to the
     // cheap OpenAI engine (~20× cheaper than ElevenLabs); set TTS_PROVIDER=elevenlabs
     // to use premium ElevenLabs voices.
